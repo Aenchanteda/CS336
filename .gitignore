@@ -162,3 +162,126 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# ============================================
+# 机器学习实验和日志
+# ============================================
+# Weights & Biases (wandb)
+wandb/
+*.wandb
+
+# MLflow
+mlruns/
+.mlflow/
+
+# TensorBoard
+runs/
+*.tfevents.*
+
+# 模型检查点
+checkpoints/
+*.ckpt
+*.pth
+# *.pt  # 注释掉，因为 tests/fixtures/ 中有 .pt 文件需要保留
+
+# ============================================
+# 性能分析和调试文件
+# ============================================
+# 性能分析文件
+*.prof
+*.pstats
+*.profile
+attention_profile.prof
+
+# cProfile 输出
+*.cprof
+
+# 内存分析
+*.mprof
+
+# ============================================
+# IDE 和编辑器
+# ============================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm / IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ============================================
+# 操作系统文件
+# ============================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.directory
+.Trash-*
+
+# ============================================
+# 临时文件和缓存
+# ============================================
+# 日志文件（保留 *.log 因为可能有些日志需要提交）
+# *.log  # 已在上面定义
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# 缓存目录
+.cache/
+
+# ============================================
+# 编译和构建产物
+# ============================================
+# Cython
+*.html  # Cython HTML 报告
+
+# 编译的扩展（已在上面定义）
+# *.so
+
+# ============================================
+# 项目特定文件
+# ============================================
+# 提交压缩包
+*.zip
+# cs336-spring2024-assignment-2-submission.zip  # 已在上面定义
+
+# ============================================
+# 其他
+# ============================================
+# 密码和密钥（重要！）
+.env.local
+*.key
+*.pem
+secrets/

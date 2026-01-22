@@ -5,7 +5,7 @@ from typing import Type
 import torch
 
 from cs336_systems.overlap_individual_param_ddp import DDPIndividualParameters
-
+from cs336_basics.flash_attention7 import flash_attention_2, triton_kernel_flash_attention_fwd
 
 
 def get_flashattention_autograd_function_pytorch() -> Type:
@@ -18,6 +18,7 @@ def get_flashattention_autograd_function_pytorch() -> Type:
         A class object (not an instance of the class)
     """
     # For example: return MyFlashAttnAutogradFunctionClass
+    return flash_attention_2
     raise NotImplementedError
 
 
@@ -33,6 +34,7 @@ def get_flashattention_autograd_function_triton() -> Type:
     Returns:
         A class object (not an instance of the class)
     """
+    return triton_kernel_flash_attention_fwd
     # For example: return MyTritonFlashAttentionAutogradFunctionClass
     raise NotImplementedError
 
