@@ -1,11 +1,10 @@
-import torch
-import math
+from turtle import forward
+import torch,math
 
 class flash_attention_2_no_triton(torch.autograd.Function):
     
     @staticmethod
-    def forward(ctx, Q, K, V, is_causal=False):
-
+    def forward(ctx, Q, K, V, is_causal=True):
 
         Q_size = 32
         K_size = 64
@@ -17,14 +16,13 @@ class flash_attention_2_no_triton(torch.autograd.Function):
         #Tiled_K = torch.split(K, K_size, dim=K[-2])
         #Tiled_V = torch.split(V, K_size, dim=V[-2])
         O = torch.zeros_like(Q)
-        L = torch.zeros(*Q.shape[:-1])
+        L = torch.zeros(*Q.shape[:-1], device=Q.device, dtype=Q.dtype)
         for i in range(0, Q.shape[-2], Q_size):
             q_end = min(i+Q_size, Q.shape[-2])
             q_tile = Q[..., i:q_end, :]
             o = torch.zeros_like(q_tile)
-            l = torch.zeros(*q_tile.shape[:-1])
-            m = torch.full((*q_tile.shape[:-1],), float('-inf'))
-            m.fill_(float('-inf'))
+            l = torch.zeros(*q_tile.shape[:-1], device=Q.device, dtype=Q.dtype)
+            m = torch.full((*q_tile.shape[:-1],), float('-inf'), device=Q.device, dtype=Q.dtype)
             for j in range (0, K.shape[-2], K_size):
                 k_end = min(j+K_size, K.shape[-2])
                 k_tile = K[...,j:k_end, :]
@@ -50,7 +48,7 @@ class flash_attention_2_no_triton(torch.autograd.Function):
         ctx.save_for_backward(Q,K,V,L,O)
         ctx.is_causal = is_causal
         return O
-        
+    
     @staticmethod
     @torch.compile(backend='inductor', dynamic=True)
     def backward(ctx, dO):
@@ -82,9 +80,10 @@ class flash_attention_2_no_triton(torch.autograd.Function):
         return dQ, dK, dV, None
 
 
-import triton
-import triton.language as tl
 
+
+import triton, math
+import triton.language as tl
 @triton.jit
 def flash_fwd_kernel(
     Q_ptr, K_ptr, V_ptr,
@@ -135,7 +134,7 @@ def flash_fwd_kernel(
     o = tl.zeros([Q_TILE_SIZE,D], dtype = tl.float32)
     l = tl.zeros([Q_TILE_SIZE],dtype = tl.float32)
     m = tl.full([Q_TILE_SIZE], float('-inf'), dtype = tl.float32)
-    Q = tl.load(Q_block_ptr, boundary_check=(0,1), padding_option = 'zero')
+    Q = tl.load(Q_block_ptr, boundary_check=(0,1), padding_option = 'zero').to(tl.float32)
     
     # 计算当前 query tile 的全局起始位置
     q_start = query_tile_index * Q_TILE_SIZE
@@ -163,8 +162,8 @@ def flash_fwd_kernel(
             order = (1,0),
         )
         
-        K = tl.load(K_block_ptr, boundary_check = (0,1), padding_option = 'zero')
-        V = tl.load(V_block_ptr, boundary_check = (0,1), padding_option = 'zero')
+        K = tl.load(K_block_ptr, boundary_check = (0,1), padding_option = 'zero').to(tl.float32)
+        V = tl.load(V_block_ptr, boundary_check = (0,1), padding_option = 'zero').to(tl.float32)
         S = tl.dot(Q, tl.trans(K)) / scale
         
         # 应用 causal mask（如果需要）
@@ -196,6 +195,14 @@ class triton_kernel_flash_attention(torch.autograd.Function):
         batch_size, N_QUERIES, D = Q.shape
         scale  = math.sqrt(D)
         N_KEYS = K.shape[-2] 
+        
+        # 保存原始数据类型
+        original_dtype = Q.dtype
+        # 如果输入是 bf16，转换为 float32 进行计算
+        if original_dtype == torch.bfloat16:
+            Q = Q.to(torch.float32)
+            K = K.to(torch.float32)
+            V = V.to(torch.float32)
 
         # 使用固定的 tile 大小
         Q_TILE_SIZE = 32
@@ -239,18 +246,36 @@ class triton_kernel_flash_attention(torch.autograd.Function):
             K_TILE_SIZE,
         )
 
+        # 如果原始类型是 bf16，转换回 bf16
+        if original_dtype == torch.bfloat16:
+            O = O.to(original_dtype)
+            L = L.to(original_dtype)
+            Q = Q.to(original_dtype)
+            K = K.to(original_dtype)
+            V = V.to(original_dtype)
+        
         ctx.save_for_backward (Q, K, V, O, L)
         ctx.is_causal = is_causal
         return O
 
      
     @staticmethod
-    @torch.compile(backend='inductor', dynamic=True)
     def backward(ctx, dO):
-        Q, K, V, L, O = ctx.saved_tensors
+        Q, K, V, O, L = ctx.saved_tensors
         is_causal = ctx.is_causal
+        
+        # 保存原始数据类型
+        original_dtype = Q.dtype
+        # 如果输入是 bf16，转换为 float32 进行计算
+        if original_dtype == torch.bfloat16:
+            Q = Q.to(torch.float32)
+            K = K.to(torch.float32)
+            V = V.to(torch.float32)
+            L = L.to(torch.float32)
+            O = O.to(torch.float32)
+            dO = dO.to(torch.float32)
+        
         scale  = math.sqrt(Q.shape[-1])
-        D = torch.exp(L)
         #公式13
         S = Q @ K.transpose(-2,-1) / scale
         if is_causal:
@@ -274,22 +299,163 @@ class triton_kernel_flash_attention(torch.autograd.Function):
 
         return dQ, dK, dV, None
 
+import pandas as pd
+from triton.testing import do_bench
+def main():
+    results = []
+    batch_size = 1
+    dtypes = [torch.bfloat16,torch.float32]
+
+    # (b) Cartesian product of d_model and seq_len
+    d_model = [16, 32]
+    seq_len = [128, 256]
+    is_causal = True
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    n_warmup = 10
+    n_iterations = 50
+ 
+    print("="*100)
+    print("FlashAttention-2 Benchmarking")
+    print("="*100)
+    print(f"Device: {device}")
+    print(f"Batch size: {batch_size} (fixed)")
+    print(f"Causal masking: {is_causal} (fixed)")
+    print(f"Warm-up iterations: {n_warmup}")
+    print(f"Benchmark iterations: {n_iterations}")
+    print("="*100)
 
 
 
-#if __name__=='__main__':
+    for i in seq_len:
+        for j in d_model:
+            for dtype in dtypes:
+                torch.manual_seed(42)
+                Q = torch.randn(batch_size, i, j, device=device, dtype=dtype, requires_grad=True)
+                K = torch.randn(batch_size, i, j,  device=device, dtype=dtype, requires_grad=True)
+                V = torch.randn(batch_size, i, j,  device=device, dtype=dtype, requires_grad=True)
+                #warm-up stage:
+                for _ in range(n_warmup):
+                    for _ in range(n_iterations):
+                        O = flash_attention_2_no_triton.apply(Q,K,V,True)
+                        dO = torch.randn_like(O)
+                        O.backward(dO, retain_graph=True)
+                        Q.grad = None   
+                        K.grad = None
+                        V.grad = None
+                print('warm-up完成，开始pytorch版本的benchmarking')
+                #pytorch benchmarking stage:
+
+                #forward pass:
+                forward_time_latency = []
+                for _ in range(n_iterations):
+                    forward_latency = do_bench(lambda:flash_attention_2_no_triton.apply(Q,K,V,is_causal))
+                    forward_time_latency.append(forward_latency)
+                forward_meantime_latency = torch.tensor(forward_time_latency).mean().item()
+
+                #backward pass:
+                backward_time_latency = []
+                for _ in range(n_iterations):
+                    O = flash_attention_2_no_triton.apply(Q,K,V,True)
+                    dO = torch.randn_like(O)
+                    backward_latency = do_bench(lambda:O.backward(dO, retain_graph=True))
+                    backward_time_latency.append(backward_latency)
+                    Q.grad = None
+                    K.grad = None
+                    V.grad = None
+                backward_meantime_latency = torch.tensor(backward_time_latency).mean().item()
+
+                #end-2-end (forward + backward)
+                e2e_time_latency = []
+                for _ in range(n_iterations):
+                    def forward_backward():
+                        O = flash_attention_2_no_triton.apply(Q,K,V,is_causal)
+                        dO = torch.randn_like(O)
+                        O.backward(dO,retain_graph=True)
+                        return O
+                    latency = do_bench(forward_backward,warmup=0)
+                    e2e_time_latency.append(latency)
+                    Q.grad = None
+                    K.grad = None
+                    V.grad = None
+                
+                e2e_meantime_latency = torch.tensor(e2e_time_latency).mean().item()
+
+                #benchmarking triton implementation 
+                print('开始triton版本的benchmarking')
+
+                #triton forward pass
+                forward_time_triton = []
+                for _ in range(n_iterations):
+                    latency = do_bench(lambda:triton_kernel_flash_attention.apply(Q,K,V,is_causal),warmup=0)
+                    forward_time_triton.append(latency)
+                forward_meantime_triton = torch.tensor(forward_time_triton).mean().item()
+
+                #测量backward pass
+                backward_time_triton = [] 
+                for _ in range(n_iterations):
+                    O = triton_kernel_flash_attention.apply(Q,K,V,is_causal)
+                    dO = torch.randn_like(O)
+                    latency = do_bench(lambda:O.backward(dO,retain_graph=True), warmup=0)
+                    backward_time_triton.append(latency)
+                    Q.grad = None
+                    K.grad = None
+                    V.grad = None
+                backward_meantime_triton = torch.tensor(backward_time_triton).mean().item()
+                
+                #end-2-end(forward+backward)
+                e2e_time_triton = []
+                for _ in range(n_iterations):
+                    def forward_backward():
+                        O =triton_kernel_flash_attention.apply(Q,K,V,is_causal)
+                        dO = torch.randn_like(O)
+                        O.backward(dO,retain_graph=True)
+                        return O
+                    latency = do_bench(forward_backward,warmup=0)
+                    e2e_time_triton.append(latency)
+                    Q.grad = None
+                    K.grad = None
+                    V.grad = None
+                e2e_meantime_triton = torch.tensor(e2e_time_triton).mean().item()
+        
+
+                results.append({'seq_len':i,
+                'd_model': j,
+                'dtype': str(dtype).split('.')[-1],  # 'bfloat16' or 'float32'
+                'forward_meantime_latency': forward_meantime_latency,
+                'backward_meantime_latency': backward_meantime_latency,
+                'e2e_meantime_latency': e2e_meantime_latency,
+                'forward_meantime_triton': forward_meantime_triton,
+                'backward_meantime_triton': backward_meantime_triton,
+                'e2e_meantime_triton': e2e_meantime_triton})
+                
+    df = pd.DataFrame(results)
+    #print
+    print('\n' + '='*150)
+    print('summary table')
+    print('='*150)
+
+    #Group by dtype for better readability
+    for dtype in ['bfloat16','float32']:
+        df_dtype = df[df['dtype']==dtype]
+        print(f"\n{'='*150}")
+        print(f"Precision: {dtype.upper()}")
+        print(f"{'='*150}")
+        print(f"{'Seq Len':<10} {'d_model':<10} {'PyTorch Forward':<20} {'PyTorch Backward':<20} {'PyTorch E2E':<20} "
+              f"{'Triton Forward':<20} {'Triton Backward':<20} {'Triton E2E':<20}")
+        print("-"*150)
+
+        for _, row in df_dtype.iterrows():#df.iterrows()逐行遍历，返回迭代器，每次迭代生成一个（行索引，列索引）的元组
+            #第一个元素是行的索引（index）；第二个元素是该行的所有数据（Pandas Series 对象，可通过列名取值）
+            print(f"{row['seq_len']:<10} {row['d_model']:<10} "
+                  f"{row['forward_meantime_latency']:<20.4f} {row['backward_meantime_latency']:<20.4f} {row['e2e_meantime_latency']:<20.4f} "
+                  f"{row['forward_meantime_triton']:<20.4f} "  # 修正：直接格式化
+                  f"{row['backward_meantime_triton']:<20.4f} "
+                  f"{row['e2e_meantime_triton']:<20.4f}")
+    return 
+
+if __name__=='__main__':
+    results_df = main()
 
 
 
-
-
-
-# Alias for adapters.py
-flash_attention_2 = flash_attention_2_no_triton
-
-
-
-
-
-
-    
+                

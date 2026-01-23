@@ -80,3 +80,60 @@ uv run cs336-basics.naive_ddp
 - 2.3.3 `Problem (ddp_bucketed_benchmarking): 3 points`
 - 2.4 `4D Parallelism`
 - 3 `Optimizer State Sharding`
+
+
+
+
+
+1. 检查 Git 状态
+cd /Users/richard/Documents/GitHub/cs336_assignment2
+git status
+2. 添加文件到暂存区
+# 添加所有修改的文件git add .# 或者只添加特定文件git add cs336-basics/cs336_basics/flash_attention7.py
+3. 提交更改
+git commit -m "Update flash attention implementation"
+4. 推送到 GitHub
+# 如果已经设置了远程仓库git push origin main# 或者git push origin master
+
+方法 2：如果是新项目或需要创建新仓库
+1. 初始化 Git 仓库（如果还没有）
+Documents
+cd /Users/richard/Documents/GitHub/cs336_assignment2git init
+2. 创建 .gitignore（可选但推荐）
+# 创建 .gitignore 文件，排除不需要上传的文件
+cat > .gitignore << EOF
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+wandb/
+*.prof
+*.log
+.DS_Store
+EOF
+
+3. 添加文件并提交
+git add .
+git commit -m "Initial commit: FlashAttention implementation"
+
+4. 在 GitHub 上创建新仓库
+访问 https://github.com/new
+输入仓库名称（例如：cs336_assignment2）
+选择 Public 或 Private
+不要勾选 "Initialize with README"（因为本地已有代码）
+点击 "Create repository"
+
+5. 添加远程仓库并推送
+# 替换 YOUR_USERNAME 为你的 GitHub 用户名
+git remote add origin https://github.com/YOUR_USERNAME/cs336_assignment2.git
+git branch -M main
+git push -u origin main
+
+git remote set-url origin https://github.com/Aenchanteda/CS336
