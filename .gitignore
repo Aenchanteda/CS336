@@ -28,6 +28,8 @@ share/python-wheels/
 MANIFEST
 
 # PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
 
@@ -82,16 +84,33 @@ profile_default/
 ipython_config.py
 
 # pyenv
-.python-version
+#   For a library or package, you might want to ignore these files since the code is
+#   intended to run in multiple environments; otherwise, check them in:
+# .python-version
 
 # pipenv
-# Pipfile.lock
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+#   having no cross-platform support, pipenv may install dependencies that don't work, or not
+#   install all needed dependencies.
+#Pipfile.lock
 
 # poetry
-# poetry.lock
+#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
+#   This is especially recommended for binary packages to ensure reproducibility, and is more
+#   commonly ignored for libraries.
+#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
+#poetry.lock
 
 # pdm
+#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
+#pdm.lock
+#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
+#   in version control.
+#   https://pdm.fming.dev/#use-with-ide
 .pdm.toml
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 
 # Celery stuff
@@ -136,41 +155,134 @@ cython_debug/
 
 # PyCharm / IntelliJ IDEA
 .idea/
+*.iml
+*.iws
+*.ipr
+
+# VSCode
 .vscode/
+*.code-workspace
 
 # Ruff cache
 .ruff_cache/
 
-# OS files
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-*~
-
-# Data files (large files that shouldn't be in git)
-*.npy
-*.npz
-*.pth
-*.pt
-*.pkl
-checkpoints/
+# ============================================
+# 机器学习实验和日志
+# ============================================
+# Weights & Biases (wandb)
 wandb/
 *.wandb
 
-# Logs and profiling
-*.log
-*.prof
+# MLflow
+mlruns/
+.mlflow/
 
-# Temporary files
-*.tmp
-*.bak
+# TensorBoard
+runs/
+*.tfevents.*
 
-# Model checkpoints and large data
+# 模型检查点
+checkpoints/
+*.ckpt
+*.pth
+# *.pt  # 注释掉，因为 tests/fixtures/ 中有 .pt 文件需要保留
 checkpoint*.pth
 checkpoint*.pt
 *.h5
-*.ckpt
+
+# ============================================
+# 性能分析和调试文件
+# ============================================
+# 性能分析文件
+*.prof
+*.pstats
+*.profile
+attention_profile.prof
+
+# cProfile 输出
+*.cprof
+
+# 内存分析
+*.mprof
+
+# ============================================
+# IDE 和编辑器
+# ============================================
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+\#*\#
+.\#*
+
+# ============================================
+# 操作系统文件
+# ============================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.directory
+.Trash-*
+
+# ============================================
+# 临时文件和缓存
+# ============================================
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# 缓存目录
+.cache/
+
+# ============================================
+# 编译和构建产物
+# ============================================
+# Cython
+*.html  # Cython HTML 报告
+
+# ============================================
+# 项目特定文件
+# ============================================
+# 提交压缩包
+*.zip
+cs336-spring2024-assignment-2-submission.zip
+336_a2_test_venv/
+test_results.xml
+
+# ============================================
+# 数据文件（大文件不应该在 git 中）
+# ============================================
+*.npy
+*.npz
+*.pkl
+
+# ============================================
+# 其他
+# ============================================
+# 密码和密钥（重要！）
+.env.local
+*.key
+*.pem
+secrets/
 
 # Data directories (uncomment if you don't want to track data)
 # data/Raw/
