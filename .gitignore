@@ -284,6 +284,10 @@ test_results.xml
 *.pem
 secrets/
 
-# Data directories (uncomment if you don't want to track data)
-# data/Raw/
-# data/Processed/
+# Data directories - large files should not be in git
+data/Raw/
+data/Processed/
+assignment1-basics/data/Raw/
+assignment1-basics/data/Processed/
+assignment1/data/Raw/
+assignment1/data/Processed/
